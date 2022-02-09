@@ -1,0 +1,124 @@
+#!/bin/sh
+
+SHIMDIR="/var/lib/microos-shim"
+MOUNTDIR="${SHIMDIR}/mount"
+DISK="${SHIMDIR}/rootfs.btrfs"
+SYSCONTAINER=registry.opensuse.org/home/rbrownsuse/containers/containers/opensuse/microos-system:latest
+SUBVOLS=.snapshots boot/grub2/i386-pc boot/grub2/x86_64-efi boot/writable home opt root srv usr/local var
+
+check_requirements () {
+echo "Detect running system (TW/ext4)"
+}
+
+check_existing_disk () {
+if [ -f $DISK];
+then
+	echo "Disk Present"
+	exit 1
+else
+	echo "Disk Not Present"
+	return 0
+fi
+}
+
+create_image () {
+echo "Check for existing disk" 
+check_existing_disk
+
+echo "Create paths"
+mkdir -p $SHIMDIR
+mkdir -p $MOUNTDIR
+
+echo "Create loop device"
+fallocate -l 40G $DISK
+
+echo "Format loop file"
+mkfs.btrfs $DISK
+
+echo "Mount loop file"
+mount -o loop $DISK $MOUNTDIR
+
+echo "Create subvolumes"
+btrfs subvolume create $MOUNTDIR/@
+mkdir -p $MOUNTDIR/@/boot/grub2/
+mkdir $MOUNTDIR/@/usr/
+for SVOL in $SUBVOLS
+do
+	btrfs subvolume create $MOUNTDIR/@/$SVOL
+done
+mkdir $MOUNTDIR/@/.snapshots/1
+btrfs subvolume create $MOUNTDIR/@/.snapshots/1/snapshot
+chattr +C $MOUNTDIR/@/var
+
+echo "Create snapper metadata"
+DATE=$(date +"%Y-%m-%d %T")
+cat <<EOF > $MOUNTDIR/@/.snapshots/1/info.xml
+<?xml version="1.0"?>
+<snapshot>
+  <type>single</type>
+  <num>1</num>
+  <date>$DATE</date>
+  <description>first root filesystem</description>
+</snapshot>
+EOF
+
+echo "Make snapshot 1 default"
+btrfs subvolume set-default $(btrfs subvolume list $MOUNTDIR | grep "@/.snapshots/1/snapshot" | grep -oP '(?<=ID )[0-9]+') $MOUNTDIR
+umount $MOUNTDIR
+mount -o loop $DISK $MOUNTDIR
+
+echo "Mount subvolumes"
+for SVOL in $SUBVOLS
+do
+	mkdir -p $MOUNTDIR/$SVOL
+	mount -o subvol=@/$SVOL $DISK $MOUNTDIR/$SVOL
+done
+
+echo "Download container and untar it"
+podman create --name "microos-shim-sys-export" $CONTAINER
+podman export microos-shim-sys-export | tar x -C $MOUNTDIR
+podman rm microos-shim-sys-export
+
+echo "Write /etc/fstab"
+BTRFSUUID=$(btrfs fi show $MOUNTDIR|grep uuid|awk '{print $4}')
+echo "UUID=$BTRFSUUID / btrfs ro 0 0" > $MOUNTDIR/etc/fstab
+for SVOL in $SUBVOLS
+do
+	echo "UUID=$BTRFSUUID /$SVOL btrfs subvol=/@/$SVOL 0 0" >> $MOUNDIR/etc/fstab
+done
+
+echo "Create snapper config"
+cp $MOUNTDIR/etc/snapper/config-templates/default $MOUNTDIR/etc/snapper/configs/root || cp $MOUNTDIR/usr/share/snapper/config-templates/default $MOUNTDIR/etc/snapper/configs/root
+# Adjust parameters
+sed -i'' 's/^SNAPPER_CONFIGS=.*$/SNAPPER_CONFIGS="root"/g' $MOUNTDIR/etc/sysconfig/snapper
+sed -i'' 's/^TIMELINE_CREATE=.*$/TIMELINE_CREATE="no"/g' $MOUNTDIR/etc/snapper/configs/root
+sed -i'' 's/^NUMBER_LIMIT=.*$/NUMBER_LIMIT="2-10"/g' $MOUNTDIR/etc/snapper/configs/root
+sed -i'' 's/^NUMBER_LIMIT_IMPORTANT=.*$/NUMBER_LIMIT_IMPORTANT="4-10"/g' $MOUNTDIR/etc/snapper/configs/root
+
+echo "Set root password"
+
+echo "Set user password"
+
+echo "Cleanup mounts"
+
+echo "Unmount subvolumes"
+
+echo "Unmount loop"
+}
+
+cleanup_image () {
+
+}
+
+boot_microos () {
+echo "Boot MicroOS"
+}
+
+patch_host () {
+}
+
+patch () {
+}
+
+boot_menu () {
+}
