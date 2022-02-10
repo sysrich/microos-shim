@@ -1,17 +1,59 @@
 #!/bin/sh
 
-SHIMDIR="/var/lib/microos-shim"
+VARDIR="/var/lib"
+SHIMDIR="${VARDIR}/microos-shim"
 MOUNTDIR="${SHIMDIR}/mount"
 DISK="${SHIMDIR}/rootfs.btrfs"
 SYSCONTAINER=registry.opensuse.org/home/rbrownsuse/containers/containers/opensuse/microos-system:latest
-SUBVOLS=.snapshots boot/grub2/i386-pc boot/grub2/x86_64-efi boot/writable home opt root srv usr/local var
+SUBVOLS=".snapshots boot/grub2/i386-pc boot/grub2/x86_64-efi boot/writable home opt root srv usr/local var"
 
 check_requirements () {
-echo "Detect running system (TW/ext4)"
+echo "Detect running distro"
+[ -r /etc/os-release ] && . /etc/os-release
+if [ "${ID}" = "opensuse-tumbleweed" ]; then
+	echo "Tumbleweed Detected"
+else
+	echo "Unsupported distro detected - $ID - expected 'opensuse-tumbleweed'"
+	exit 1
+fi
+
+echo "Detect podman"
+if which podman > /dev/null 2>&1; then
+	echo "Podman located"
+else
+	echo "Podman is not installed, please install podman package"
+	exit 1
+fi
+
+echo "Detect btrfsprogs"
+if which btrfs > /dev/null 2>&1; then
+        echo "btrfsprogs located"
+else
+        echo "btrfsprogs is not installed, please install btrfsprogs package"
+        exit 1
+fi
+
+echo "Detect findmnt"
+if which findmnt > /dev/null 2>&1; then
+        echo "findmnt located"
+else
+        echo "findmnt is not installed, please install util-linux-systemd package"
+        exit 1
+fi
+
+echo "Detect ext4 filesystem"
+FSTYPE=$(findmnt -T $VARDIR -o FSTYPE|grep -v FSTYPE)
+if [ "$fstype" = "ext4" ]; then
+	echo "ext4 detected"
+else
+	echo "ext4 not detected, this tool is only for ext4 filesystems"
+	exit 1
+fi
+
 }
 
 check_existing_disk () {
-if [ -f $DISK];
+if [ -f $DISK ];
 then
 	echo "Disk Present"
 	exit 1
@@ -110,7 +152,8 @@ umount $MOUNTDIR
 }
 
 cleanup_image () {
-
+echo "Cleanup Image"
+rm $DISK
 }
 
 boot_microos () {
@@ -118,10 +161,12 @@ echo "Boot MicroOS"
 }
 
 patch_host () {
-}
-
-patch () {
+echo "Patch host/layer 1"
 }
 
 boot_menu () {
+echo "Boot Menu"
 }
+
+check_requirements
+create_image
