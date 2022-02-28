@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/bin/bash
+## Script using /bin/bash because /bin/sh on WSL has some weird aliases
 
 VARDIR="/var/lib"
 SHIMDIR="${VARDIR}/microos-shim"
@@ -33,6 +34,22 @@ else
         exit 1
 fi
 
+echo "Detect e2fsprogs"
+if which chattr > /dev/null 2>&1; then
+        echo "e2fsprogs located"
+else
+        echo "e2fsprogs is not installed, please install e2fsprogs package"
+        exit 1
+fi
+
+echo "Detect tar"
+if which tar > /dev/null 2>&1; then
+        echo "tar located"
+else
+        echo "tar is not installed, please install tar package"
+        exit 1
+fi
+
 echo "Detect findmnt"
 if which findmnt > /dev/null 2>&1; then
         echo "findmnt located"
@@ -43,7 +60,7 @@ fi
 
 echo "Detect ext4 filesystem"
 FSTYPE=$(findmnt -T $VARDIR -o FSTYPE|grep -v FSTYPE)
-if [ "$fstype" = "ext4" ]; then
+if [ "$FSTYPE" = "ext4" ]; then
 	echo "ext4 detected"
 else
 	echo "ext4 not detected, this tool is only for ext4 filesystems"
@@ -117,7 +134,7 @@ do
 done
 
 echo "Download container and untar it"
-podman create --name "microos-shim-sys-export" $CONTAINER
+podman create --name "microos-shim-sys-export" $SYSCONTAINER
 podman export microos-shim-sys-export | tar x -C $MOUNTDIR
 podman rm microos-shim-sys-export
 
